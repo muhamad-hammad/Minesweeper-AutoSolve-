@@ -43,19 +43,6 @@ export default function Home() {
     [selectedDifficulty],
   );
 
-  const statusLabel = useMemo(() => {
-    if (board.status === "won") {
-      return "You won!";
-    }
-    if (board.status === "lost") {
-      return "Game over";
-    }
-    if (board.status === "idle") {
-      return "Click a cell to start";
-    }
-    return "Playing";
-  }, [board.status]);
-
   const constraintCount = useMemo(() => getConstraintCount(board), [board]);
 
   const resetBoard = (difficultyName: string) => {
@@ -213,15 +200,7 @@ export default function Home() {
           onCellRightClick={handleCellRightClick}
         />
 
-        <StatsPanel
-          status={statusLabel}
-          mines={board.totalMines}
-          flags={board.flaggedCount}
-          revealed={board.revealedCount}
-          constraintCount={aiState.constraintCount}
-          totalMoves={aiState.totalMoves}
-          correctMoves={aiState.correctMoves}
-        />
+        <StatsPanel aiState={aiState} board={board} />
 
         <AIPanel
           aiState={aiState}
