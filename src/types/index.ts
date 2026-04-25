@@ -6,7 +6,7 @@ export interface Cell {
   col: number;
   isMine: boolean;
   state: CellState;
-  adjacentMines: number; // 0-8, only meaningful when revealed
+  adjacentMines: number;
 }
 
 export interface GameBoard {
@@ -27,16 +27,15 @@ export interface Constraint {
 
 export type AIMove =
   | { type: 'reveal'; cellId: string; reason: string; confidence: 'certain' | 'probable' }
-  | { type: 'flag'; cellId: string; reason: string; confidence: 'certain' | 'probable' };
+  | { type: 'flag';   cellId: string; reason: string; confidence: 'certain' | 'probable' };
 
 export interface AIState {
   isRunning: boolean;
-  speed: number;        // ms between moves, 100-2000
+  speed: number;         // ms between moves, 100–2000
   moveHistory: AIMove[];
   lastReason: string;
   phase: 'constraint' | 'probability' | 'idle';
   constraintCount: number;
-  correctMoves: number;
   totalMoves: number;
 }
 

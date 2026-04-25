@@ -3,20 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AIPanel from "@/components/AIPanel";
 import Board from "@/components/Board";
-import GameControls from "@/components/GameControls";
 import StatsPanel from "@/components/StatsPanel";
 import { createEmptyBoard, flagCell, placeMines, revealCell } from "@/lib/minesweeper";
 import { applyMove, getConstraintCount, getNextMove } from "@/lib/solver";
 import type { AIMove, AIState, Difficulty, GameBoard } from "@/types";
 import { DIFFICULTIES } from "@/types";
 
-const DEFAULT_DIFFICULTY = DIFFICULTIES[0];
+const DEFAULT_DIFFICULTY = DIFFICULTIES[0]!;
 
-function createBoard(difficulty: Difficulty): GameBoard {
-  return createEmptyBoard(difficulty.rows, difficulty.cols, difficulty.mines);
+function newBoard(d: Difficulty): GameBoard {
+  return createEmptyBoard(d.rows, d.cols, d.mines);
 }
 
-function createAIState(): AIState {
+function freshAIState(): AIState {
   return {
     isRunning: false,
     speed: 700,
@@ -24,268 +23,274 @@ function createAIState(): AIState {
     lastReason: "",
     phase: "idle",
     constraintCount: 0,
-    correctMoves: 0,
     totalMoves: 0,
   };
 }
 
 export default function Home() {
   const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
-  const [board, setBoard] = useState<GameBoard>(() => createBoard(DEFAULT_DIFFICULTY));
-  const [aiState, setAiState] = useState<AIState>(() => createAIState());
+  const [board, setBoard] = useState<GameBoard>(() => newBoard(DEFAULT_DIFFICULTY));
+  const [aiState, setAiState] = useState<AIState>(freshAIState);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
+  const [revealOriginCell, setRevealOriginCell] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<AIMove | null>(null);
-  const [pendingPhase, setPendingPhase] = useState<"constraint" | "probability" | null>(null);
-  const timerRef = useRef<number | null>(null);
-  const applyTimerRef = useRef<number | null>(null);
+
+  // -------------------------------------------------------------------------
+  // Refs — values that timers need to read without stale closures
+  // -------------------------------------------------------------------------
   const latestBoardRef = useRef<GameBoard>(board);
+  const isRunningRef   = useRef(false);
+  const speedRef       = useRef(aiState.speed);
+  const timerRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const applyTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const constraintCount = useMemo(() => getConstraintCount(board), [board]);
+  // Keep refs in sync with state (safe to do during render; refs are only
+  // READ inside timers, never during the render phase itself).
+  latestBoardRef.current = board;
+  isRunningRef.current   = aiState.isRunning;
+  speedRef.current       = aiState.speed;
 
-  useEffect(() => {
-    latestBoardRef.current = board;
-  }, [board]);
+  // -------------------------------------------------------------------------
+  // AI step function stored in a ref so it can recurse without circular deps.
+  // Re-assigned each render so state-setter closures are always fresh.
+  // -------------------------------------------------------------------------
+  const runAIRef = useRef<(b: GameBoard) => void>(() => undefined);
 
-  useEffect(() => {
-    setBoard(createBoard(difficulty));
-    setAiState((prev) => ({
-      ...createAIState(),
-      speed: prev.speed,
-    }));
-    setHighlightedCell(null);
-    setPendingMove(null);
-    setPendingPhase(null);
-  }, [difficulty]);
-
-  const revealFromCell = useCallback((cellId: string) => {
-    setBoard((current) => {
-      if (aiState.isRunning) {
-        return current;
-      }
-      let nextBoard = current;
-      if (!current.firstMoveDone) {
-        const safeCell = current.cells.flat().find((cell) => cell.id === cellId);
-        if (!safeCell) {
-          return current;
-        }
-        nextBoard = placeMines(current, safeCell);
-      }
-      return revealCell(nextBoard, cellId);
-    });
-  }, [aiState.isRunning]);
-
-  const runSingleAIMove = useCallback((baseBoard: GameBoard) => {
+  runAIRef.current = (baseBoard: GameBoard) => {
     const next = getNextMove(baseBoard);
+
     if (!next) {
+      isRunningRef.current = false;
       setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
       setHighlightedCell(null);
       setPendingMove(null);
-      setPendingPhase(null);
-      return false;
+      return;
     }
 
+    // Highlight the chosen cell before applying
     setPendingMove(next.move);
-    setPendingPhase(next.phase);
     setHighlightedCell(next.move.cellId);
 
-    if (applyTimerRef.current) {
-      window.clearTimeout(applyTimerRef.current);
-    }
+    if (applyTimerRef.current) clearTimeout(applyTimerRef.current);
 
-    applyTimerRef.current = window.setTimeout(() => {
-      setBoard((current) => applyMove(current, next.move));
+    applyTimerRef.current = setTimeout(() => {
+      // Always use latestBoardRef so we act on the most recent board state
+      const nextBoard = applyMove(latestBoardRef.current, next.move);
+      latestBoardRef.current = nextBoard;
+
+      setBoard(nextBoard);
+      setRevealOriginCell(next.move.cellId);
+      setPendingMove(null);
+      setHighlightedCell(null);
       setAiState((prev) => ({
         ...prev,
         phase: next.phase,
         lastReason: next.move.reason,
         moveHistory: [...prev.moveHistory, next.move],
         totalMoves: prev.totalMoves + 1,
-        correctMoves: prev.correctMoves + (next.move.confidence === "certain" ? 1 : 0),
       }));
-      setPendingMove(null);
-      setPendingPhase(null);
-      setHighlightedCell(null);
-    }, 300);
 
-    return true;
-  }, []);
+      // Schedule the next move if still running
+      if (!isRunningRef.current) return;
 
-  const handleCellClick = (cellId: string) => {
-    if (aiState.isRunning) {
-      return;
-    }
-    revealFromCell(cellId);
-  };
-
-  const handleCellRightClick = (cellId: string) => {
-    if (aiState.isRunning) {
-      return;
-    }
-    setBoard((current) => flagCell(current, cellId));
-  };
-
-  const handleAIStep = () => {
-    if (aiState.isRunning) {
-      return;
-    }
-    const currentBoard = latestBoardRef.current;
-    if (currentBoard.status !== "playing") {
-      return;
-    }
-    runSingleAIMove(currentBoard);
-  };
-
-  const handleReset = () => {
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (applyTimerRef.current) {
-      window.clearTimeout(applyTimerRef.current);
-      applyTimerRef.current = null;
-    }
-    setBoard(createBoard(difficulty));
-    setAiState((prev) => ({ ...createAIState(), speed: prev.speed }));
-    setHighlightedCell(null);
-    setPendingMove(null);
-    setPendingPhase(null);
-  };
-
-  const handleStart = () => {
-    setBoard((current) => {
-      if (current.status !== "idle" || current.firstMoveDone) {
-        return current;
-      }
-      const randomRow = Math.floor(Math.random() * current.rows);
-      const randomCol = Math.floor(Math.random() * current.cols);
-      const safeCell = current.cells[randomRow][randomCol];
-      const withMines = placeMines(current, safeCell);
-      return revealCell(withMines, safeCell.id);
-    });
-
-    setAiState((prev) => ({
-      ...prev,
-      isRunning: true,
-      phase: prev.phase === "idle" ? "constraint" : prev.phase,
-    }));
-  };
-
-  const handleStop = () => {
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    if (applyTimerRef.current) {
-      window.clearTimeout(applyTimerRef.current);
-      applyTimerRef.current = null;
-    }
-    setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
-    setHighlightedCell(null);
-    setPendingMove(null);
-    setPendingPhase(null);
-  };
-
-  const handleDifficultyNameChange = (name: string) => {
-    const nextDifficulty = DIFFICULTIES.find((item) => item.name === name);
-    if (!nextDifficulty) {
-      return;
-    }
-    setDifficulty(nextDifficulty);
-  };
-
-  const handleDifficultyChange = (nextDifficulty: Difficulty) => {
-    setDifficulty(nextDifficulty);
-  };
-
-  useEffect(() => {
-    if (!aiState.isRunning || board.status !== "playing") {
-      return;
-    }
-
-    timerRef.current = window.setTimeout(() => {
-      const currentBoard = latestBoardRef.current;
-      if (currentBoard.status !== "playing") {
+      if (nextBoard.status !== "playing") {
+        isRunningRef.current = false;
         setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
         return;
       }
-      runSingleAIMove(currentBoard);
-    }, aiState.speed);
 
-    return () => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [aiState.isRunning, aiState.speed, board.status, runSingleAIMove]);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        runAIRef.current(latestBoardRef.current);
+      }, speedRef.current);
+    }, 300);
+  };
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-      }
-      if (applyTimerRef.current) {
-        window.clearTimeout(applyTimerRef.current);
-      }
-    };
+  // -------------------------------------------------------------------------
+  // Utilities
+  // -------------------------------------------------------------------------
+  const clearTimers = useCallback(() => {
+    if (timerRef.current)      { clearTimeout(timerRef.current);      timerRef.current = null; }
+    if (applyTimerRef.current) { clearTimeout(applyTimerRef.current); applyTimerRef.current = null; }
   }, []);
 
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
+  // Safe first move: place mines away from the chosen cell, then reveal it.
+  const doFirstMove = useCallback((base: GameBoard, cellId?: string): GameBoard => {
+    let row: number, col: number;
+    if (cellId) {
+      const [r, c] = cellId.split("-").map(Number);
+      row = r!;
+      col = c!;
+    } else {
+      row = Math.floor(Math.random() * base.rows);
+      col = Math.floor(Math.random() * base.cols);
+    }
+    const safeCell = base.cells[row]![col]!;
+    setRevealOriginCell(safeCell.id);
+    return revealCell(placeMines(base, safeCell), safeCell.id);
+  }, []);
+
+  // -------------------------------------------------------------------------
+  // Event handlers
+  // -------------------------------------------------------------------------
+  const handleStart = useCallback(() => {
+    if (isRunningRef.current) return;
+
+    let b = latestBoardRef.current;
+    if (!b.firstMoveDone) {
+      b = doFirstMove(b);
+      latestBoardRef.current = b;
+      setBoard(b);
+    }
+    if (b.status !== "playing") return;
+
+    isRunningRef.current = true;
+    setAiState((prev) => ({ ...prev, isRunning: true, phase: "constraint" }));
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      runAIRef.current(latestBoardRef.current);
+    }, speedRef.current);
+  }, [doFirstMove]);
+
+  const handleStop = useCallback(() => {
+    clearTimers();
+    isRunningRef.current = false;
+    setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+    setHighlightedCell(null);
+    setPendingMove(null);
+  }, [clearTimers]);
+
+  // Manual single-step.
+  // First call on an idle board makes the opening move; subsequent calls each
+  // run one solver step.
+  const handleAIStep = useCallback(() => {
+    if (isRunningRef.current || pendingMove !== null) return;
+
+    let b = latestBoardRef.current;
+    if (!b.firstMoveDone) {
+      b = doFirstMove(b);
+      latestBoardRef.current = b;
+      setBoard(b);
+      return; // show the reveal; next Step press runs the first AI move
+    }
+    if (b.status !== "playing") return;
+    runAIRef.current(b);
+  }, [doFirstMove, pendingMove]);
+
+  const handleReset = useCallback(() => {
+    clearTimers();
+    isRunningRef.current = false;
+    const b = newBoard(difficulty);
+    latestBoardRef.current = b;
+    setBoard(b);
+    setAiState((prev) => ({ ...freshAIState(), speed: prev.speed }));
+    setHighlightedCell(null);
+    setRevealOriginCell(null);
+    setPendingMove(null);
+  }, [difficulty, clearTimers]);
+
+  const handleCellClick = useCallback((cellId: string) => {
+    if (isRunningRef.current) return;
+    let b = latestBoardRef.current;
+    if (b.status === "won" || b.status === "lost") return;
+
+    if (!b.firstMoveDone) {
+      b = doFirstMove(b, cellId);
+    } else {
+      setRevealOriginCell(cellId);
+      b = revealCell(b, cellId);
+    }
+    latestBoardRef.current = b;
+    setBoard(b);
+  }, [doFirstMove]);
+
+  const handleCellRightClick = useCallback((cellId: string) => {
+    if (isRunningRef.current) return;
+    const b = flagCell(latestBoardRef.current, cellId);
+    latestBoardRef.current = b;
+    setBoard(b);
+  }, []);
+
+  const handleDifficultyChange = useCallback((d: Difficulty) => {
+    clearTimers();
+    isRunningRef.current = false;
+    setDifficulty(d);
+    const b = newBoard(d);
+    latestBoardRef.current = b;
+    setBoard(b);
+    setAiState((prev) => ({ ...freshAIState(), speed: prev.speed }));
+    setHighlightedCell(null);
+    setRevealOriginCell(null);
+    setPendingMove(null);
+  }, [clearTimers]);
+
+  // -------------------------------------------------------------------------
+  // Sync constraint count into aiState for display
+  // -------------------------------------------------------------------------
+  const constraintCount = useMemo(() => getConstraintCount(board), [board]);
   useEffect(() => {
     setAiState((prev) => {
-      const nextPhase = prev.isRunning ? (pendingPhase ?? prev.phase) : "idle";
-      if (prev.constraintCount === constraintCount && prev.phase === nextPhase) {
-        return prev;
-      }
-      return {
-        ...prev,
-        constraintCount,
-        phase: nextPhase,
-      };
+      if (prev.constraintCount === constraintCount) return prev;
+      return { ...prev, constraintCount };
     });
-  }, [constraintCount, pendingPhase]);
+  }, [constraintCount]);
 
-  const runToggle = () => {
-    if (aiState.isRunning) {
-      handleStop();
-    } else {
-      handleStart();
-    }
-  };
+  // -------------------------------------------------------------------------
+  // Keyboard shortcut: R = reset
+  // -------------------------------------------------------------------------
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "r") return;
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+      e.preventDefault();
+      handleReset();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleReset]);
+
+  // -------------------------------------------------------------------------
+  // Derived display flags
+  // -------------------------------------------------------------------------
   const isMovePending = pendingMove !== null;
+  const canStep =
+    !aiState.isRunning &&
+    !isMovePending &&
+    (board.status === "idle" || board.status === "playing");
+  const canStart =
+    !aiState.isRunning &&
+    (board.status === "idle" || board.status === "playing");
 
   return (
     <main className="min-h-screen bg-zinc-950 px-3 py-6 text-zinc-100">
       <div className="mx-auto w-full max-w-7xl">
-        <header className="mb-6 text-center lg:text-left">
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Minesweeper AI</h1>
+        <header className="mb-6 text-center">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            Minesweeper AI
+          </h1>
           <p className="mt-1 text-sm text-zinc-400 sm:text-base">
-            Constraint Propagation + Probability Solver
+            CSP Constraint Propagation + Probabilistic Fallback
           </p>
         </header>
 
         <div className="grid gap-5 lg:grid-cols-[minmax(320px,420px)_1fr] lg:items-start">
           <section className="space-y-4">
-            <GameControls
-              difficulties={DIFFICULTIES}
-              selectedDifficulty={difficulty.name}
-              speed={aiState.speed}
-              isRunning={aiState.isRunning}
-              canStep={board.status === "playing" && !isMovePending}
-              onDifficultyChange={handleDifficultyNameChange}
-              onSpeedChange={(speed) => setAiState((prev) => ({ ...prev, speed }))}
-              onReset={handleReset}
-              onStep={handleAIStep}
-              onToggleRun={runToggle}
-            />
             <AIPanel
               aiState={aiState}
+              difficulty={difficulty}
+              gameStatus={board.status}
+              canStep={canStep}
+              canStart={canStart}
+              onDifficultyChange={handleDifficultyChange}
+              onSpeedChange={(ms) => setAiState((prev) => ({ ...prev, speed: ms }))}
               onStart={handleStart}
               onStop={handleStop}
               onStep={handleAIStep}
-              onSpeedChange={(ms) => setAiState((prev) => ({ ...prev, speed: ms }))}
               onReset={handleReset}
-              difficulty={difficulty}
-              onDifficultyChange={handleDifficultyChange}
             />
             <StatsPanel aiState={aiState} board={board} />
           </section>
@@ -294,6 +299,7 @@ export default function Home() {
             <Board
               board={board}
               highlightedCell={highlightedCell}
+              revealOriginCell={revealOriginCell}
               onCellClick={handleCellClick}
               onCellRightClick={handleCellRightClick}
             />

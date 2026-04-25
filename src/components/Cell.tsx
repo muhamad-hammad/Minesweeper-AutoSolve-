@@ -6,6 +6,9 @@ import type { Cell as CellType } from "@/types";
 interface CellProps {
   cell: CellType;
   isHighlighted: boolean;
+  revealDelayMs: number;
+  mineRevealDelayMs: number;
+  isLossState: boolean;
   onClick: () => void;
   onRightClick: () => void;
 }
@@ -21,7 +24,15 @@ const numberColors: Record<number, string> = {
   8: "text-gray-600",
 };
 
-export default function Cell({ cell, isHighlighted, onClick, onRightClick }: CellProps) {
+export default function Cell({
+  cell,
+  isHighlighted,
+  revealDelayMs,
+  mineRevealDelayMs,
+  isLossState,
+  onClick,
+  onRightClick,
+}: CellProps) {
   const baseClasses =
     "relative flex aspect-square w-full select-none items-center justify-center rounded-md border text-sm font-bold transition-all duration-150 sm:text-base";
 
@@ -62,6 +73,7 @@ export default function Cell({ cell, isHighlighted, onClick, onRightClick }: Cel
 
   const content = cell.isMine ? "💣" : cell.adjacentMines > 0 ? cell.adjacentMines : "";
   const numberClass = cell.isMine ? "text-black" : numberColors[cell.adjacentMines] ?? "text-zinc-700";
+  const revealDelay = cell.isMine && isLossState ? mineRevealDelayMs : revealDelayMs;
 
   return (
     <motion.button
@@ -69,8 +81,10 @@ export default function Cell({ cell, isHighlighted, onClick, onRightClick }: Cel
       aria-label={`Revealed cell ${cell.id}`}
       initial={{ scale: 0.8, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className={`${baseClasses} ${highlightClasses} ${numberClass} cursor-default border-zinc-400 bg-zinc-200`}
+      transition={{ duration: 0.2, ease: "easeOut", delay: revealDelay / 1000 }}
+      className={`${baseClasses} ${highlightClasses} ${numberClass} cursor-default border-zinc-400 bg-zinc-200 ${
+        cell.isMine && isLossState ? "shadow-[0_0_16px_rgba(239,68,68,0.45)]" : ""
+      }`}
       onClick={onClick}
       onContextMenu={handleContextMenu}
     >

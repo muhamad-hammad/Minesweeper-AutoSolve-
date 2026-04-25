@@ -102,9 +102,7 @@ export function getHiddenNeighbors(board: GameBoard, cell: Cell): Cell[] {
 }
 
 export function getUnflaggedHiddenNeighbors(board: GameBoard, cell: Cell): Cell[] {
-  return getNeighbors(board, cell).filter(
-    (neighbor) => neighbor.state === "hidden" && neighbor.state !== "flagged",
-  );
+  return getNeighbors(board, cell).filter((neighbor) => neighbor.state === "hidden");
 }
 
 export function placeMines(board: GameBoard, safeCell: Cell): GameBoard {
@@ -165,8 +163,8 @@ export function revealCell(board: GameBoard, cellId: string): GameBoard {
   const selectedClone = cells[selected.row][selected.col];
 
   if (selectedClone.isMine) {
-    const minesRevealed = cells.map((row) =>
-      row.map((cell) => (cell.isMine ? { ...cell, state: "revealed" } : cell)),
+    const minesRevealed: Cell[][] = cells.map((row) =>
+      row.map((cell) => (cell.isMine ? { ...cell, state: "revealed" as const } : cell)),
     );
     return buildBoard(board, minesRevealed, "lost");
   }

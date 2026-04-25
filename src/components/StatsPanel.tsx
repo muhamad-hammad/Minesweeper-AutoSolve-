@@ -7,98 +7,117 @@ interface StatsPanelProps {
   board: GameBoard;
 }
 
-function getStatusMeta(status: GameBoard["status"]) {
-  if (status === "won") {
-    return { label: "Won", className: "text-emerald-300" };
-  }
-  if (status === "lost") {
-    return { label: "Lost", className: "text-red-300" };
-  }
-  if (status === "playing") {
-    return { label: "Playing", className: "text-cyan-300" };
-  }
-  return { label: "Idle", className: "text-zinc-300" };
+function statusMeta(s: GameBoard["status"]) {
+  if (s === "won")     return { label: "Won",     cls: "text-emerald-300" };
+  if (s === "lost")    return { label: "Lost",    cls: "text-red-300" };
+  if (s === "playing") return { label: "Playing", cls: "text-cyan-300" };
+  return                      { label: "Idle",    cls: "text-zinc-400" };
 }
 
-function getPhaseLabel(phase: AIState["phase"]): string {
-  if (phase === "constraint") {
-    return "Constraint Solving";
-  }
-  if (phase === "probability") {
-    return "Probability Guess";
-  }
+function phaseLabel(p: AIState["phase"]): string {
+  if (p === "constraint") return "Constraint Solving";
+  if (p === "probability") return "Probability Guess";
   return "Idle";
 }
 
 export default function StatsPanel({ aiState, board }: StatsPanelProps) {
-  const minesRemaining = board.totalMines - board.flaggedCount;
-  const totalSafeCells = board.rows * board.cols - board.totalMines;
-  const statusMeta = getStatusMeta(board.status);
+  const minesLeft   = board.totalMines - board.flaggedCount;
+  const totalSafe   = board.rows * board.cols - board.totalMines;
+  const status      = statusMeta(board.status);
 
-  const certainMoves = aiState.moveHistory.filter((move) => move.confidence === "certain").length;
-  const probableMoves = aiState.moveHistory.filter((move) => move.confidence === "probable").length;
-  const certainRatio = aiState.totalMoves > 0 ? (certainMoves / aiState.totalMoves) * 100 : 0;
-  const probableRatio = aiState.totalMoves > 0 ? (probableMoves / aiState.totalMoves) * 100 : 0;
-  const certaintyScore = aiState.totalMoves > 0 ? ((certainMoves / aiState.totalMoves) * 100).toFixed(1) : "0.0";
+  const certainMoves  = aiState.moveHistory.filter((m) => m.confidence === "certain").length;
+  const probableMoves = aiState.moveHistory.filter((m) => m.confidence === "probable").length;
+  const certainPct    = aiState.totalMoves > 0 ? (certainMoves / aiState.totalMoves) * 100 : 0;
+  const probablePct   = aiState.totalMoves > 0 ? (probableMoves / aiState.totalMoves) * 100 : 0;
 
   return (
-    <section className="w-full max-w-5xl rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl sm:p-5">
-      <h2 className="mb-4 text-lg font-semibold tracking-wide text-zinc-100">Stats Panel</h2>
+    <section className="w-full rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl sm:p-5">
+      <h2 className="mb-4 text-lg font-semibold tracking-wide">Stats</h2>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-800/70 p-3">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Game Stats</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Game stats */}
+        <div className="space-y-1.5 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Game</h3>
           <p className="text-sm text-zinc-200">
-            Mines remaining: <span className="font-semibold text-zinc-100">{minesRemaining}</span>
+            Status:{" "}
+            <span className={`font-semibold ${status.cls}`}>{status.label}</span>
           </p>
           <p className="text-sm text-zinc-200">
-            Cells revealed:{" "}
+            Mines left:{" "}
+            <span className="font-semibold text-zinc-100">{minesLeft}</span>
+            <span className="text-zinc-500"> / {board.totalMines}</span>
+          </p>
+          <p className="text-sm text-zinc-200">
+            Revealed:{" "}
+            <span className="font-semibold text-zinc-100">{board.revealedCount}</span>
+            <span className="text-zinc-500"> / {totalSafe}</span>
+          </p>
+          <p className="text-sm text-zinc-200">
+            Grid:{" "}
             <span className="font-semibold text-zinc-100">
-              {board.revealedCount} / {totalSafeCells}
+              {board.rows} × {board.cols}
             </span>
-          </p>
-          <p className="text-sm">
-            Status: <span className={`font-semibold ${statusMeta.className}`}>{statusMeta.label}</span>
           </p>
         </div>
 
-        <div className="space-y-2 rounded-lg border border-zinc-700 bg-zinc-800/70 p-3">
-          <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            AI Performance
-          </h3>
+        {/* AI performance */}
+        <div className="space-y-1.5 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">AI Performance</h3>
           <p className="text-sm text-zinc-200">
-            Total moves made: <span className="font-semibold text-zinc-100">{aiState.totalMoves}</span>
+            Phase:{" "}
+            <span className="font-semibold text-zinc-100">{phaseLabel(aiState.phase)}</span>
           </p>
           <p className="text-sm text-zinc-200">
-            Certain vs Probable:{" "}
+            Total moves:{" "}
+            <span className="font-semibold text-zinc-100">{aiState.totalMoves}</span>
+          </p>
+          <p className="text-sm text-zinc-200">
+            Certain / Probable:{" "}
             <span className="font-semibold text-zinc-100">
-              {certainMoves}:{probableMoves}
+              {certainMoves} / {probableMoves}
             </span>
           </p>
+          {/* Mini bar chart */}
           <div className="flex h-2 overflow-hidden rounded bg-zinc-700">
-            <div className="h-full bg-cyan-400" style={{ width: `${certainRatio}%` }} />
-            <div className="h-full bg-orange-400" style={{ width: `${probableRatio}%` }} />
+            <div className="h-full bg-cyan-400 transition-all" style={{ width: `${certainPct}%` }} />
+            <div className="h-full bg-orange-400 transition-all" style={{ width: `${probablePct}%` }} />
           </div>
-          <p className="text-sm text-zinc-200">
-            Accuracy: <span className="font-semibold text-cyan-300">{certaintyScore}% certain</span>
-          </p>
-          <p className="text-sm text-zinc-200">
-            Current phase:{" "}
-            <span className="font-semibold text-zinc-100">{getPhaseLabel(aiState.phase)}</span>
+          <p className="text-xs text-zinc-400">
+            <span className="text-cyan-400">■</span> Certain &nbsp;
+            <span className="text-orange-400">■</span> Probable
           </p>
         </div>
       </div>
 
-      <details className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800/70 p-3">
-        <summary className="cursor-pointer text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-          How It Works
+      {/* How it works */}
+      <details className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
+        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-widest text-zinc-300">
+          How the CSP Solver Works
         </summary>
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-zinc-200">
+        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-zinc-300">
           <li>
-            Constraint solver: Uses numbered cells to deduce mine locations with 100% certainty
+            <span className="font-semibold text-zinc-100">Constraint building</span> — every
+            revealed number cell generates a constraint: the set of its hidden neighbours
+            contains exactly N mines.
           </li>
-          <li>Subset reduction: If constraint A ⊆ B, infers new constraint B-A</li>
-          <li>Probability fallback: When stuck, picks lowest mine-probability cell</li>
+          <li>
+            <span className="font-semibold text-zinc-100">Subset reduction</span> — if
+            constraint A ⊆ B, a new constraint B \ A is derived. Repeated until no new
+            constraints are found.
+          </li>
+          <li>
+            <span className="font-semibold text-zinc-100">Certain moves</span> — if a
+            constraint has 0 mines → reveal all; if mines == cells → flag all.
+          </li>
+          <li>
+            <span className="font-semibold text-zinc-100">CSP enumeration</span> — when no
+            certain move exists, connected constraint components are enumerated via
+            backtracking to compute exact mine probabilities for every frontier cell.
+          </li>
+          <li>
+            <span className="font-semibold text-zinc-100">Probability fallback</span> — the
+            cell with the lowest mine probability is revealed; cells above 85 % are flagged.
+          </li>
         </ul>
       </details>
     </section>
