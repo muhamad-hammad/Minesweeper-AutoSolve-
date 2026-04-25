@@ -38,6 +38,10 @@ export default function Home() {
   const [board, setBoard] = useState(() => createBoardFromDifficulty(DEFAULT_DIFFICULTY));
   const [aiState, setAiState] = useState<AIState>(createInitialAIState);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
+  const activeDifficulty = useMemo(
+    () => getDifficultyByName(selectedDifficulty),
+    [selectedDifficulty],
+  );
 
   const statusLabel = useMemo(() => {
     if (board.status === "won") {
@@ -66,6 +70,23 @@ export default function Home() {
 
   const handleReset = () => {
     resetBoard(selectedDifficulty);
+  };
+
+  const handleDifficultyChange = (difficulty: Difficulty) => {
+    setSelectedDifficulty(difficulty.name);
+    resetBoard(difficulty.name);
+  };
+
+  const handleStart = () => {
+    setAiState((prev) => ({
+      ...prev,
+      isRunning: board.status === "playing",
+    }));
+  };
+
+  const handleStop = () => {
+    setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+    setHighlightedCell(null);
   };
 
   const handleCellClick = (cellId: string) => {
@@ -202,7 +223,16 @@ export default function Home() {
           correctMoves={aiState.correctMoves}
         />
 
-        <AIPanel aiState={aiState} />
+        <AIPanel
+          aiState={aiState}
+          onStart={handleStart}
+          onStop={handleStop}
+          onStep={handleAIStep}
+          onSpeedChange={(ms) => setAiState((prev) => ({ ...prev, speed: ms }))}
+          onReset={handleReset}
+          difficulty={activeDifficulty}
+          onDifficultyChange={handleDifficultyChange}
+        />
       </div>
     </main>
   );
