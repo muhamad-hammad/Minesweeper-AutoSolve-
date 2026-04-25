@@ -1,101 +1,209 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import AIPanel from "@/components/AIPanel";
+import Board from "@/components/Board";
+import GameControls from "@/components/GameControls";
+import StatsPanel from "@/components/StatsPanel";
+import { createEmptyBoard, flagCell, placeMines, revealCell } from "@/lib/minesweeper";
+import { applyMove, getConstraintCount, getNextMove } from "@/lib/solver";
+import type { AIMove, AIState, Difficulty, GameBoard } from "@/types";
+import { DIFFICULTIES } from "@/types";
+
+const DEFAULT_DIFFICULTY = DIFFICULTIES[0];
+
+function createBoardFromDifficulty(difficulty: Difficulty): GameBoard {
+  return createEmptyBoard(difficulty.rows, difficulty.cols, difficulty.mines);
+}
+
+function getDifficultyByName(name: string): Difficulty {
+  return DIFFICULTIES.find((difficulty) => difficulty.name === name) ?? DEFAULT_DIFFICULTY;
+}
+
+function createInitialAIState(): AIState {
+  return {
+    isRunning: false,
+    speed: 500,
+    moveHistory: [],
+    lastReason: "",
+    phase: "idle",
+    constraintCount: 0,
+    correctMoves: 0,
+    totalMoves: 0,
+  };
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [selectedDifficulty, setSelectedDifficulty] = useState(DEFAULT_DIFFICULTY.name);
+  const [board, setBoard] = useState(() => createBoardFromDifficulty(DEFAULT_DIFFICULTY));
+  const [aiState, setAiState] = useState<AIState>(createInitialAIState);
+  const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+  const statusLabel = useMemo(() => {
+    if (board.status === "won") {
+      return "You won!";
+    }
+    if (board.status === "lost") {
+      return "Game over";
+    }
+    if (board.status === "idle") {
+      return "Click a cell to start";
+    }
+    return "Playing";
+  }, [board.status]);
+
+  const constraintCount = useMemo(() => getConstraintCount(board), [board]);
+
+  const resetBoard = (difficultyName: string) => {
+    const difficulty = getDifficultyByName(difficultyName);
+    setBoard(createBoardFromDifficulty(difficulty));
+    setHighlightedCell(null);
+    setAiState((prev) => ({
+      ...createInitialAIState(),
+      speed: prev.speed,
+    }));
+  };
+
+  const handleReset = () => {
+    resetBoard(selectedDifficulty);
+  };
+
+  const handleCellClick = (cellId: string) => {
+    setBoard((current) => {
+      let nextBoard = current;
+
+      if (!current.firstMoveDone) {
+        const safeCell = current.cells.flat().find((cell) => cell.id === cellId);
+        if (!safeCell) {
+          return current;
+        }
+        nextBoard = placeMines(current, safeCell);
+      }
+
+      return revealCell(nextBoard, cellId);
+    });
+  };
+
+  const handleCellRightClick = (cellId: string) => {
+    setBoard((current) => flagCell(current, cellId));
+  };
+
+  const performAIMove = (move: AIMove, phase: "constraint" | "probability") => {
+    setBoard((current) => {
+      const target = current.cells.flat().find((cell) => cell.id === move.cellId);
+      const isCorrect = target ? (move.type === "flag" ? target.isMine : !target.isMine) : false;
+      const nextBoard = applyMove(current, move);
+
+      setAiState((prev) => ({
+        ...prev,
+        phase,
+        lastReason: move.reason,
+        moveHistory: [...prev.moveHistory, move],
+        totalMoves: prev.totalMoves + 1,
+        correctMoves: prev.correctMoves + (isCorrect ? 1 : 0),
+      }));
+
+      return nextBoard;
+    });
+  };
+
+  const handleAIStep = () => {
+    if (board.status !== "playing") {
+      return;
+    }
+
+    const next = getNextMove(board);
+    if (!next) {
+      setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+      setHighlightedCell(null);
+      return;
+    }
+
+    setHighlightedCell(next.move.cellId);
+    window.setTimeout(() => {
+      performAIMove(next.move, next.phase);
+      setHighlightedCell(null);
+    }, Math.min(250, Math.max(120, aiState.speed / 2)));
+  };
+
+  useEffect(() => {
+    if (!aiState.isRunning || board.status !== "playing") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const next = getNextMove(board);
+      if (!next) {
+        setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+        setHighlightedCell(null);
+        return;
+      }
+
+      setHighlightedCell(next.move.cellId);
+      const applyTimer = window.setTimeout(() => {
+        performAIMove(next.move, next.phase);
+        setHighlightedCell(null);
+      }, 120);
+
+      return () => window.clearTimeout(applyTimer);
+    }, aiState.speed);
+
+    return () => window.clearTimeout(timer);
+  }, [aiState.isRunning, aiState.speed, board]);
+
+  useEffect(() => {
+    setAiState((prev) => ({
+      ...prev,
+      constraintCount,
+      phase: prev.isRunning ? prev.phase : "idle",
+    }));
+  }, [constraintCount]);
+
+  return (
+    <main className="min-h-screen bg-zinc-100 px-3 py-6 text-zinc-900">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
+        <h1 className="text-2xl font-bold sm:text-3xl">Minesweeper AI</h1>
+
+        <GameControls
+          difficulties={DIFFICULTIES}
+          selectedDifficulty={selectedDifficulty}
+          speed={aiState.speed}
+          isRunning={aiState.isRunning}
+          canStep={board.status === "playing"}
+          onDifficultyChange={(name) => {
+            setSelectedDifficulty(name);
+            resetBoard(name);
+          }}
+          onSpeedChange={(speed) => setAiState((prev) => ({ ...prev, speed }))}
+          onReset={handleReset}
+          onStep={handleAIStep}
+          onToggleRun={() =>
+            setAiState((prev) => ({
+              ...prev,
+              isRunning: !prev.isRunning && board.status === "playing",
+            }))
+          }
+        />
+
+        <Board
+          board={board}
+          highlightedCell={highlightedCell}
+          onCellClick={handleCellClick}
+          onCellRightClick={handleCellRightClick}
+        />
+
+        <StatsPanel
+          status={statusLabel}
+          mines={board.totalMines}
+          flags={board.flaggedCount}
+          revealed={board.revealedCount}
+          constraintCount={aiState.constraintCount}
+          totalMoves={aiState.totalMoves}
+          correctMoves={aiState.correctMoves}
+        />
+
+        <AIPanel aiState={aiState} />
+      </div>
+    </main>
   );
 }
