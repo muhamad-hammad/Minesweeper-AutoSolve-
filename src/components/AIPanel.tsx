@@ -201,6 +201,306 @@ export default function AIPanel({
           )}
         </div>
       </div>
+
+      {/* --- CSP Algorithm Showcase --- */}
+      <CSPShowcase phase={aiState.phase} hasHistory={aiState.moveHistory.length > 0} />
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CSP Algorithm Showcase
+// ---------------------------------------------------------------------------
+
+type CodeLine = {
+  code: string;
+  comment: string;
+  // Which phase(s) make this line "active"
+  activeOn: Array<AIState["phase"] | "any">;
+  // indent level (0 = top, 1 = one level, 2 = two levels)
+  indent: number;
+  // visual group separator above this line
+  group?: string;
+};
+
+const CSP_LINES: CodeLine[] = [
+  // ── Phase 1: build constraints ──────────────────────────────────────────
+  {
+    group: "Step 1 — Build Constraints",
+    code: "for (cell of revealedCells) {",
+    comment: "scan every revealed number",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  {
+    code: "  hidden = neighbours(cell)",
+    comment: "collect unrevealed neighbours",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "    .filter(n => n !== 'flagged');",
+    comment: "flags already accounted for",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "  constraints.push({",
+    comment: "record linear constraint",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "    cells: hidden,",
+    comment: "unknown frontier cells",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "    mines: cell.adj − flagged",
+    comment: "remaining mine budget",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "  });",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "}",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  // ── Phase 2: simplify ───────────────────────────────────────────────────
+  {
+    group: "Step 2 — Subset Reduction",
+    code: "while (changed) {",
+    comment: "repeat until stable",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  {
+    code: "  for ([A, B] of pairs(constraints))",
+    comment: "compare every pair",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "    if (A.cells ⊆ B.cells) {",
+    comment: "A is a subset of B",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "      add({ cells: B∖A,",
+    comment: "derive tighter constraint",
+    activeOn: ["constraint"],
+    indent: 3,
+  },
+  {
+    code: "           mines: B.mines − A.mines });",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 3,
+  },
+  {
+    code: "    }",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "}",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  // ── Phase 3: extract certain moves ──────────────────────────────────────
+  {
+    group: "Step 3 — Extract Certain Moves",
+    code: "for (c of constraints) {",
+    comment: "check each simplified constraint",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  {
+    code: "  if (c.mines === 0)",
+    comment: "zero mines → all cells safe",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "    reveal(c.cells);        // ✓ certain",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "  if (c.mines === c.cells.size)",
+    comment: "all cells are mines",
+    activeOn: ["constraint"],
+    indent: 1,
+  },
+  {
+    code: "    flag(c.cells);          // ⚑ certain",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 2,
+  },
+  {
+    code: "}",
+    comment: "",
+    activeOn: ["constraint"],
+    indent: 0,
+  },
+  // ── Phase 4: probability fallback ───────────────────────────────────────
+  {
+    group: "Step 4 — Probability Fallback",
+    code: "components = partition(constraints);",
+    comment: "connected frontier groups",
+    activeOn: ["probability"],
+    indent: 0,
+  },
+  {
+    code: "for (comp of components) {",
+    comment: "independent sub-problems",
+    activeOn: ["probability"],
+    indent: 0,
+  },
+  {
+    code: "  backtrack(cells, assignment={})",
+    comment: "enumerate valid placements",
+    activeOn: ["probability"],
+    indent: 1,
+  },
+  {
+    code: "    → count mine freq per cell",
+    comment: "tally across valid states",
+    activeOn: ["probability"],
+    indent: 2,
+  },
+  {
+    code: "}",
+    comment: "",
+    activeOn: ["probability"],
+    indent: 0,
+  },
+  {
+    code: "P(cell) = freq / totalValid;",
+    comment: "posterior mine probability",
+    activeOn: ["probability"],
+    indent: 0,
+  },
+  {
+    code: "reveal argmin P(cell);   // ~ guess",
+    comment: "safest available cell",
+    activeOn: ["probability"],
+    indent: 0,
+  },
+];
+
+function CSPShowcase({
+  phase,
+  hasHistory,
+}: {
+  phase: AIState["phase"];
+  hasHistory: boolean;
+}) {
+  const isIdle = phase === "idle" || !hasHistory;
+
+  return (
+    <div className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          CSP Algorithm
+        </h3>
+        {!isIdle && (
+          <span
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              phase === "constraint"
+                ? "border-blue-400/50 bg-blue-500/20 text-blue-300"
+                : "border-orange-400/50 bg-orange-500/20 text-orange-300"
+            }`}
+          >
+            {phase === "constraint" ? "Steps 1–3 active" : "Step 4 active"}
+          </span>
+        )}
+      </div>
+
+      <div className="max-h-72 overflow-y-auto rounded border border-zinc-700 bg-zinc-950/80 p-2">
+        <pre className="font-mono text-[11px] leading-relaxed">
+          {CSP_LINES.map((line, i) => {
+            const active =
+              !isIdle &&
+              (line.activeOn.includes("any") || line.activeOn.includes(phase));
+
+            return (
+              <div key={i}>
+                {/* Group header */}
+                {line.group && (
+                  <div className="mt-2 mb-0.5 first:mt-0 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 select-none">
+                    {"// ── "}{line.group}{" ──"}
+                  </div>
+                )}
+
+                <div
+                  className={`flex gap-2 rounded px-1 py-px transition-colors ${
+                    active
+                      ? phase === "constraint"
+                        ? "bg-blue-500/10 text-blue-100"
+                        : "bg-orange-500/10 text-orange-100"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {/* Active indicator */}
+                  <span
+                    className={`w-1 shrink-0 rounded-full self-stretch ${
+                      active
+                        ? phase === "constraint"
+                          ? "bg-blue-400"
+                          : "bg-orange-400"
+                        : "bg-transparent"
+                    }`}
+                  />
+
+                  {/* Code token */}
+                  <span
+                    className={`flex-1 whitespace-pre ${
+                      active ? "font-semibold" : "font-normal"
+                    }`}
+                  >
+                    {"  ".repeat(line.indent)}{line.code}
+                  </span>
+
+                  {/* Inline comment */}
+                  {line.comment && (
+                    <span
+                      className={`shrink-0 text-right text-[10px] leading-loose ${
+                        active
+                          ? phase === "constraint"
+                            ? "text-blue-400/70"
+                            : "text-orange-400/70"
+                          : "text-zinc-600"
+                      }`}
+                    >
+                      {`// ${line.comment}`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </pre>
+      </div>
+
+      {isIdle && (
+        <p className="mt-1.5 text-center text-[10px] text-zinc-600">
+          Lines highlight as the AI executes each phase.
+        </p>
+      )}
+    </div>
   );
 }
