@@ -147,6 +147,7 @@ export default function AIPanel({
               step={100}
               value={aiState.speed}
               onChange={(e) => onSpeedChange(Number(e.target.value))}
+              title="AI move speed in milliseconds"
               className="w-full accent-cyan-400"
             />
           </div>
