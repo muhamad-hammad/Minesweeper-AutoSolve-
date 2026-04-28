@@ -1,6 +1,7 @@
 "use client";
 
 import type { AIState, GameBoard } from "@/types";
+import SessionTimeline from "./SessionTimeline";
 
 interface StatsPanelProps {
   aiState: AIState;
@@ -88,6 +89,8 @@ export default function StatsPanel({ aiState, board }: StatsPanelProps) {
           </p>
         </div>
       </div>
+
+      <SessionTimeline aiState={aiState} board={board} />
 
       {/* How it works */}
       <details className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
