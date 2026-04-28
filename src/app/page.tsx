@@ -51,6 +51,44 @@ export default function Home() {
   speedRef.current       = aiState.speed;
 
   // -------------------------------------------------------------------------
+  // Utilities & Handlers
+  // -------------------------------------------------------------------------
+  const clearTimers = useCallback(() => {
+    if (timerRef.current)      { clearTimeout(timerRef.current);      timerRef.current = null; }
+    if (applyTimerRef.current) { clearTimeout(applyTimerRef.current); applyTimerRef.current = null; }
+  }, []);
+
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
+  // Safe first move: place mines away from the chosen cell, then reveal it.
+  const doFirstMove = useCallback((base: GameBoard, cellId?: string): GameBoard => {
+    let row: number, col: number;
+    if (cellId) {
+      const [r, c] = cellId.split("-").map(Number);
+      row = r!;
+      col = c!;
+    } else {
+      row = Math.floor(Math.random() * base.rows);
+      col = Math.floor(Math.random() * base.cols);
+    }
+    const safeCell = base.cells[row]![col]!;
+    setRevealOriginCell(safeCell.id);
+    return revealCell(placeMines(base, safeCell), safeCell.id);
+  }, []);
+
+  const handleReset = useCallback(() => {
+    clearTimers();
+    isRunningRef.current = false;
+    const b = newBoard(difficulty);
+    latestBoardRef.current = b;
+    setBoard(b);
+    setAiState((prev) => ({ ...freshAIState(), speed: prev.speed }));
+    setHighlightedCell(null);
+    setRevealOriginCell(null);
+    setPendingMove(null);
+  }, [difficulty, clearTimers]);
+
+  // -------------------------------------------------------------------------
   // AI step function stored in a ref so it can recurse without circular deps.
   // Re-assigned each render so state-setter closures are always fresh.
   // -------------------------------------------------------------------------
@@ -96,6 +134,11 @@ export default function Home() {
       if (nextBoard.status !== "playing") {
         isRunningRef.current = false;
         setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+        
+        // Auto-reset after a delay to start a new game
+        setTimeout(() => {
+          handleReset();
+        }, 3000);
         return;
       }
 
@@ -106,35 +149,6 @@ export default function Home() {
     }, 300);
   };
 
-  // -------------------------------------------------------------------------
-  // Utilities
-  // -------------------------------------------------------------------------
-  const clearTimers = useCallback(() => {
-    if (timerRef.current)      { clearTimeout(timerRef.current);      timerRef.current = null; }
-    if (applyTimerRef.current) { clearTimeout(applyTimerRef.current); applyTimerRef.current = null; }
-  }, []);
-
-  useEffect(() => () => clearTimers(), [clearTimers]);
-
-  // Safe first move: place mines away from the chosen cell, then reveal it.
-  const doFirstMove = useCallback((base: GameBoard, cellId?: string): GameBoard => {
-    let row: number, col: number;
-    if (cellId) {
-      const [r, c] = cellId.split("-").map(Number);
-      row = r!;
-      col = c!;
-    } else {
-      row = Math.floor(Math.random() * base.rows);
-      col = Math.floor(Math.random() * base.cols);
-    }
-    const safeCell = base.cells[row]![col]!;
-    setRevealOriginCell(safeCell.id);
-    return revealCell(placeMines(base, safeCell), safeCell.id);
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // Event handlers
-  // -------------------------------------------------------------------------
   const handleStart = useCallback(() => {
     if (isRunningRef.current) return;
 
@@ -164,8 +178,6 @@ export default function Home() {
   }, [clearTimers]);
 
   // Manual single-step.
-  // First call on an idle board makes the opening move; subsequent calls each
-  // run one solver step.
   const handleAIStep = useCallback(() => {
     if (isRunningRef.current || pendingMove !== null) return;
 
@@ -180,38 +192,14 @@ export default function Home() {
     runAIRef.current(b);
   }, [doFirstMove, pendingMove]);
 
-  const handleReset = useCallback(() => {
-    clearTimers();
-    isRunningRef.current = false;
-    const b = newBoard(difficulty);
-    latestBoardRef.current = b;
-    setBoard(b);
-    setAiState((prev) => ({ ...freshAIState(), speed: prev.speed }));
-    setHighlightedCell(null);
-    setRevealOriginCell(null);
-    setPendingMove(null);
-  }, [difficulty, clearTimers]);
+  const handleCellClick = useCallback((_cellId: string) => {
+    // User manual play disabled
+    return;
+  }, []);
 
-  const handleCellClick = useCallback((cellId: string) => {
-    if (isRunningRef.current) return;
-    let b = latestBoardRef.current;
-    if (b.status === "won" || b.status === "lost") return;
-
-    if (!b.firstMoveDone) {
-      b = doFirstMove(b, cellId);
-    } else {
-      setRevealOriginCell(cellId);
-      b = revealCell(b, cellId);
-    }
-    latestBoardRef.current = b;
-    setBoard(b);
-  }, [doFirstMove]);
-
-  const handleCellRightClick = useCallback((cellId: string) => {
-    if (isRunningRef.current) return;
-    const b = flagCell(latestBoardRef.current, cellId);
-    latestBoardRef.current = b;
-    setBoard(b);
+  const handleCellRightClick = useCallback((_cellId: string) => {
+    // User manual play disabled
+    return;
   }, []);
 
   const handleDifficultyChange = useCallback((d: Difficulty) => {
@@ -236,7 +224,12 @@ export default function Home() {
       if (prev.constraintCount === constraintCount) return prev;
       return { ...prev, constraintCount };
     });
-  }, [constraintCount]);
+
+    // Auto-start if idle
+    if (board.status === "idle" && !aiState.isRunning) {
+      handleStart();
+    }
+  }, [constraintCount, board.status, aiState.isRunning, handleStart]);
 
   // -------------------------------------------------------------------------
   // Keyboard shortcut: R = reset

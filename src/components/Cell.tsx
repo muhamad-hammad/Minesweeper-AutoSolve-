@@ -50,7 +50,7 @@ export default function Cell({
       <button
         type="button"
         aria-label={`Hidden cell ${cell.id}`}
-        className={`${baseClasses} ${highlightClasses} border-zinc-600 bg-zinc-700 text-zinc-100 hover:bg-zinc-600`}
+        className={`${baseClasses} ${highlightClasses} cursor-default border-zinc-600 bg-zinc-700 text-zinc-100`}
         onClick={onClick}
         onContextMenu={handleContextMenu}
       />
@@ -62,7 +62,7 @@ export default function Cell({
       <button
         type="button"
         aria-label={`Flagged cell ${cell.id}`}
-        className={`${baseClasses} ${highlightClasses} border-zinc-600 bg-zinc-700 text-orange-500 hover:bg-zinc-600`}
+        className={`${baseClasses} ${highlightClasses} cursor-default border-zinc-600 bg-zinc-700 text-orange-500`}
         onClick={onClick}
         onContextMenu={handleContextMenu}
       >
