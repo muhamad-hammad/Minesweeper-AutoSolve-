@@ -97,13 +97,7 @@ export function getNeighbors(board: GameBoard, cell: Cell): Cell[] {
   return neighbors;
 }
 
-export function getHiddenNeighbors(board: GameBoard, cell: Cell): Cell[] {
-  return getNeighbors(board, cell).filter((neighbor) => neighbor.state !== "revealed");
-}
 
-export function getUnflaggedHiddenNeighbors(board: GameBoard, cell: Cell): Cell[] {
-  return getNeighbors(board, cell).filter((neighbor) => neighbor.state === "hidden");
-}
 
 export function placeMines(board: GameBoard, safeCell: Cell): GameBoard {
   const excluded = new Set<string>([safeCell.id, ...getNeighbors(board, safeCell).map((c) => c.id)]);
