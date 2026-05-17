@@ -1,5 +1,7 @@
 export type CellState = 'hidden' | 'revealed' | 'flagged';
 
+export type PlayMode = 'human' | 'ai';
+
 export interface Cell {
   id: string;           // "{row}-{col}"
   row: number;

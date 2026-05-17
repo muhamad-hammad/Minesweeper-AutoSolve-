@@ -8,6 +8,7 @@ interface BoardProps {
   board: GameBoard;
   highlightedCell: string | null;
   revealOriginCell: string | null;
+  interactive: boolean;
   onCellClick: (cellId: string) => void;
   onCellRightClick: (cellId: string) => void;
 }
@@ -31,6 +32,7 @@ export default function Board({
   board,
   highlightedCell,
   revealOriginCell,
+  interactive,
   onCellClick,
   onCellRightClick,
 }: BoardProps) {
@@ -95,6 +97,7 @@ export default function Board({
                   revealDelayMs={revealDelayMs}
                   mineRevealDelayMs={mineRevealDelayMs}
                   isLossState={board.status === "lost"}
+                  interactive={interactive}
                   onClick={() => onCellClick(cell.id)}
                   onRightClick={() => onCellRightClick(cell.id)}
                 />

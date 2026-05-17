@@ -6,7 +6,7 @@ import Board from "@/components/Board";
 import StatsPanel from "@/components/StatsPanel";
 import { createEmptyBoard, flagCell, placeMines, revealCell } from "@/lib/minesweeper";
 import { applyMove, getConstraintCount, getNextMove } from "@/lib/solver";
-import type { AIMove, AIState, Difficulty, GameBoard } from "@/types";
+import type { AIMove, AIState, Difficulty, GameBoard, PlayMode } from "@/types";
 import { DIFFICULTIES } from "@/types";
 
 // ---------------------------------------------------------------------------
@@ -59,11 +59,12 @@ function HowToPlay({ onClose }: { onClose: () => void }) {
             </h3>
             <div className="overflow-hidden rounded-lg border border-zinc-700">
               {[
-                ["Left-click", "Reveal a covered cell"],
-                ["Right-click", "Flag / unflag a mine suspect"],
+                ["Player toggle", "Switch between 👤 Human and 🤖 AI mode"],
+                ["Left-click", "Reveal a covered cell (Human mode)"],
+                ["Right-click", "Flag / unflag a mine suspect (Human mode)"],
                 ["R key", "Reset the board"],
-                ["Run AI", "Let the solver play continuously"],
-                ["Step", "Execute one AI move at a time"],
+                ["Run AI", "Let the solver play continuously (AI mode)"],
+                ["Step", "Execute one AI move at a time (AI mode)"],
                 ["Stop", "Pause the running AI"],
                 ["Reset", "Start a fresh board"],
                 ["Speed slider", "Adjust AI move delay (100 – 2000 ms)"],
@@ -216,6 +217,7 @@ export default function Home() {
   const [view, setView] = useState<"home" | "game">("home");
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
+  const [mode, setMode] = useState<PlayMode>("human");
   const [difficulty, setDifficulty] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [board, setBoard] = useState<GameBoard>(() => newBoard(DEFAULT_DIFFICULTY));
   const [aiState, setAiState] = useState<AIState>(freshAIState);
@@ -380,15 +382,44 @@ export default function Home() {
     runAIRef.current(b);
   }, [doFirstMove, pendingMove]);
 
-  const handleCellClick = useCallback((_cellId: string) => {
-    // User manual play disabled
-    return;
-  }, []);
+  const handleCellClick = useCallback((cellId: string) => {
+    if (mode !== "human" || isRunningRef.current) return;
 
-  const handleCellRightClick = useCallback((_cellId: string) => {
-    // User manual play disabled
-    return;
-  }, []);
+    const current = latestBoardRef.current;
+    if (current.status !== "idle" && current.status !== "playing") return;
+
+    const next = current.firstMoveDone
+      ? revealCell(current, cellId)
+      : doFirstMove(current, cellId);
+
+    latestBoardRef.current = next;
+    setBoard(next);
+    setRevealOriginCell(cellId);
+  }, [mode, doFirstMove]);
+
+  const handleCellRightClick = useCallback((cellId: string) => {
+    if (mode !== "human" || isRunningRef.current) return;
+
+    const current = latestBoardRef.current;
+    if (current.status !== "playing" && current.status !== "idle") return;
+    if (!current.firstMoveDone) return; // can't flag before any reveal
+
+    const next = flagCell(current, cellId);
+    latestBoardRef.current = next;
+    setBoard(next);
+  }, [mode]);
+
+  const handleModeChange = useCallback((m: PlayMode) => {
+    if (m === mode) return;
+    if (m === "human") {
+      clearTimers();
+      isRunningRef.current = false;
+      setAiState((prev) => ({ ...prev, isRunning: false, phase: "idle" }));
+      setHighlightedCell(null);
+      setPendingMove(null);
+    }
+    setMode(m);
+  }, [mode, clearTimers]);
 
   const handleDifficultyChange = useCallback((d: Difficulty) => {
     clearTimers();
@@ -413,11 +444,11 @@ export default function Home() {
       return { ...prev, constraintCount };
     });
 
-    // Auto-start if idle
-    if (board.status === "idle" && !aiState.isRunning) {
+    // Auto-start only when AI mode is selected
+    if (mode === "ai" && board.status === "idle" && !aiState.isRunning) {
       handleStart();
     }
-  }, [constraintCount, board.status, aiState.isRunning, handleStart]);
+  }, [constraintCount, board.status, aiState.isRunning, handleStart, mode]);
 
   // -------------------------------------------------------------------------
   // Keyboard shortcut: R = reset
@@ -497,6 +528,8 @@ export default function Home() {
               gameStatus={board.status}
               canStep={canStep}
               canStart={canStart}
+              mode={mode}
+              onModeChange={handleModeChange}
               onDifficultyChange={handleDifficultyChange}
               onSpeedChange={(ms) => setAiState((prev) => ({ ...prev, speed: ms }))}
               onStart={handleStart}
@@ -512,6 +545,7 @@ export default function Home() {
               board={board}
               highlightedCell={highlightedCell}
               revealOriginCell={revealOriginCell}
+              interactive={mode === "human" && !aiState.isRunning && (board.status === "idle" || board.status === "playing")}
               onCellClick={handleCellClick}
               onCellRightClick={handleCellRightClick}
             />

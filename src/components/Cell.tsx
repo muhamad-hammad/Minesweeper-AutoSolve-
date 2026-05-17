@@ -9,6 +9,7 @@ interface CellProps {
   revealDelayMs: number;
   mineRevealDelayMs: number;
   isLossState: boolean;
+  interactive: boolean;
   onClick: () => void;
   onRightClick: () => void;
 }
@@ -30,6 +31,7 @@ export default function Cell({
   revealDelayMs,
   mineRevealDelayMs,
   isLossState,
+  interactive,
   onClick,
   onRightClick,
 }: CellProps) {
@@ -40,9 +42,19 @@ export default function Cell({
     ? "animate-pulse border-yellow-400 ring-2 ring-yellow-300 shadow-[0_0_12px_rgba(250,204,21,0.6)]"
     : "";
 
+  const hiddenInteractiveClass = interactive
+    ? "cursor-pointer hover:bg-zinc-600 hover:border-zinc-500"
+    : "cursor-default";
+
   const handleContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
+    if (!interactive) return;
     onRightClick();
+  };
+
+  const handleClick = () => {
+    if (!interactive) return;
+    onClick();
   };
 
   if (cell.state === "hidden") {
@@ -50,8 +62,8 @@ export default function Cell({
       <button
         type="button"
         aria-label={`Hidden cell ${cell.id}`}
-        className={`${baseClasses} ${highlightClasses} cursor-default border-zinc-600 bg-zinc-700 text-zinc-100`}
-        onClick={onClick}
+        className={`${baseClasses} ${highlightClasses} ${hiddenInteractiveClass} border-zinc-600 bg-zinc-700 text-zinc-100`}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
       />
     );
@@ -62,8 +74,8 @@ export default function Cell({
       <button
         type="button"
         aria-label={`Flagged cell ${cell.id}`}
-        className={`${baseClasses} ${highlightClasses} cursor-default border-zinc-600 bg-zinc-700 text-orange-500`}
-        onClick={onClick}
+        className={`${baseClasses} ${highlightClasses} ${hiddenInteractiveClass} border-zinc-600 bg-zinc-700 text-orange-500`}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
         🚩
@@ -85,7 +97,7 @@ export default function Cell({
       className={`${baseClasses} ${highlightClasses} ${numberClass} cursor-default border-zinc-400 bg-zinc-200 ${
         cell.isMine && isLossState ? "shadow-[0_0_16px_rgba(239,68,68,0.45)]" : ""
       }`}
-      onClick={onClick}
+      onClick={handleClick}
       onContextMenu={handleContextMenu}
     >
       {content}

@@ -1,6 +1,6 @@
 "use client";
 
-import type { AIMove, AIState, Difficulty, GameBoard } from "@/types";
+import type { AIMove, AIState, Difficulty, GameBoard, PlayMode } from "@/types";
 import { DIFFICULTIES } from "@/types";
 
 interface AIPanelProps {
@@ -9,6 +9,8 @@ interface AIPanelProps {
   gameStatus: GameBoard["status"];
   canStep: boolean;
   canStart: boolean;
+  mode: PlayMode;
+  onModeChange: (m: PlayMode) => void;
   onDifficultyChange: (d: Difficulty) => void;
   onSpeedChange: (ms: number) => void;
   onStart: () => void;
@@ -51,6 +53,8 @@ export default function AIPanel({
   gameStatus,
   canStep,
   canStart,
+  mode,
+  onModeChange,
   onDifficultyChange,
   onSpeedChange,
   onStart,
@@ -62,10 +66,45 @@ export default function AIPanel({
   const phase       = phasePill(aiState.phase);
   const lastMove    = aiState.moveHistory.at(-1);
   const banner      = gameStatusBanner(gameStatus);
+  const aiControlsEnabled = mode === "ai";
 
   return (
     <section className="w-full rounded-xl border border-zinc-700 bg-zinc-900 p-4 text-zinc-100 shadow-xl sm:p-5">
       <h2 className="mb-4 text-lg font-semibold tracking-wide">AI Solver</h2>
+
+      {/* Mode toggle: Human vs AI */}
+      <div className="mb-4 rounded-lg border border-zinc-700 bg-zinc-800/60 p-3">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-zinc-400">
+          Player
+        </h3>
+        <div className="grid grid-cols-2 gap-2">
+          {(["human", "ai"] as const).map((m) => {
+            const selected = mode === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onModeChange(m)}
+                disabled={aiState.isRunning && m !== mode}
+                className={`rounded border px-3 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  selected
+                    ? m === "human"
+                      ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100"
+                      : "border-cyan-400/70 bg-cyan-500/20 text-cyan-100"
+                    : "border-zinc-500 bg-zinc-700 text-zinc-200 hover:bg-zinc-600"
+                }`}
+              >
+                {m === "human" ? "👤 Human" : "🤖 AI"}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-zinc-500">
+          {mode === "human"
+            ? "Left-click to reveal, right-click to flag."
+            : "AI plays automatically. Use the controls below."}
+        </p>
+      </div>
 
       {/* Game-over banner */}
       {banner && (
@@ -111,7 +150,7 @@ export default function AIPanel({
             <button
               type="button"
               onClick={aiState.isRunning ? onStop : onStart}
-              disabled={!aiState.isRunning && !canStart}
+              disabled={!aiControlsEnabled || (!aiState.isRunning && !canStart)}
               className="rounded border border-cyan-400/60 bg-cyan-500/20 px-3 py-1.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/35 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {aiState.isRunning ? "Stop" : "Run AI"}
@@ -119,7 +158,7 @@ export default function AIPanel({
             <button
               type="button"
               onClick={onStep}
-              disabled={!canStep}
+              disabled={!aiControlsEnabled || !canStep}
               className="rounded border border-zinc-500 bg-zinc-700 px-3 py-1.5 text-sm font-semibold text-zinc-100 transition hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Step
